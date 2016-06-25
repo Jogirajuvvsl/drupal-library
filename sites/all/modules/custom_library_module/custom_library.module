@@ -1,0 +1,356 @@
+<?php 
+
+function custom_library_rules_action_info()
+{
+	return array(
+	    'custom_library_issue_check' => array( 
+	            'label' => t('Check to see if user can issue book'),
+	             'description' => t('Checks whether the issue component can be used for the particular user and book. Given that he cannot borrow more than 5 books'),
+	             'group' => 'custom',
+	             'parameter' => array(
+	                  'book' => array(
+	                      'type' => 'node',
+	                      'label' => t('The selected book'),
+	                       ),
+	                    ),
+	             'provides' => array(
+      					'check' => array(
+      					   'type' => 'text',
+      					   'label' => t('The Status of the action'),
+      					),
+	             ),
+	    ),
+
+	    'custom_library_issue_check_librarian' => array( 
+	            'label' => t('Check to see if librarian can issue book'),
+	             'description' => t('Checks whether the issue component can be used for the particular user and book. Given that he cannot borrow more than 5 books'),
+	             'group' => 'custom',
+	             'parameter' => array(
+	                  'book' => array(
+	                      'type' => 'node',
+	                      'label' => t('The selected book'),
+	                       ),
+	                  'user' => array(
+	                      'type' => 'user',
+	                      'label' => t('The selected user'),
+	                       ),
+	                    ),
+	             'provides' => array(
+      					'check' => array(
+      					   'type' => 'text',
+      					   'label' => t('The Status of the action'),
+      					),
+	             ),
+	    ),
+
+	    'custom_library_get_id' => array(
+	             'label' => t('Action for returning a book'),
+	             'description' => t('It gets the Node Id of the Book'),
+	             'group' => 'custom',
+                 'parameter' => array(
+	                  'issue' => array(
+	                      'type' => 'node',
+	                      'label' => t('The selected issue'),
+	                       ),
+	                    ),
+	             'provides' => array(
+      					'id' => array(
+      					   'type' => 'integer',
+      					   'label' => t('The node id of the book to be returned'),
+      					),
+	             ),
+	     ),
+	     
+		 'custom_library_fine_calculation' => array(
+	             'label' => t('Action for calculating the fine'),
+	             'description' => t('Calculates the fine to be paid by the member'),
+	             'group' => 'custom',
+                 'parameter' => array(
+	                  'issue' => array(
+	                      'type' => 'node',
+	                      'label' => t('The selected issue'),
+	                       ),
+	                    ),
+	             'provides' => array(
+      					'fine' => array(
+      					   'type' => 'integer',
+      					   'label' => t('The fine to be paid by the member'),
+      					),
+	             ),
+	     ),
+
+	     'custom_library_return_date' => array(
+	             'label' => t('Action for calculating the return date of the book'),
+	             'description' => t('Calculates the return date of the borrowed book'),
+	             'group' => 'custom',
+	             'provides' => array(
+      					'date' => array(
+      					   'type' => 'date',
+      					   'label' => t('The return date of the borrowed book'),
+      		 	         ),
+      		 	 ),
+ 			),
+	);                     
+}
+
+function custom_library_menu()
+{
+    $items = array();
+
+    $items['details'] = array(
+       'title' => 'A Form to add fine details',
+       'description' => 'Add the no. of days after which fine starts and the amount per day',
+       'page callback' => 'drupal_get_form',
+       'page arguments' => array('fine_form'),
+       'access arguments' => array('fine form'),
+       'type' => MENU_NORMAL_ITEM,
+       );
+
+    return $items;
+}
+
+function fine_form()
+{
+	$form = array();
+
+	$form['fine_amount'] = array(
+		'#type' => 'textfield',
+		'#description' => t('The Amount of Fine deducted per day when the member has not returned a book in time'),
+		'#title' => t('The Amount in INR'),
+		'#default_value' => variable_get('fine_amount',10),
+		'#align' => 'center',
+		'#size' => 6,
+		'#maxlength' => 4,
+		'#required' => TRUE,
+		);
+
+	$form['fine_days'] = array(
+		'#type' => 'textfield',
+		'#description' => t('The No. of Days after which fine starts deducting'),
+		'#title' => t('The No. of Days'),
+		'#default_value' => variable_get('fine_days',14),
+		'#align' => 'center',
+		'#size' => 6,
+		'#maxlength' => 4,
+		'#required' => TRUE,
+		);
+
+	return system_settings_form($form);
+}
+
+function custom_library_permission() {
+  return array(
+    'fine form' => array(
+      'title' => t('Access the Fine form details form'),
+    )
+  );
+}
+
+function custom_library_form_alter(&$form,&$form_state,$form_id)
+{
+     if($form_id == 'views_form_view_all_the_books_page'){
+     	
+       if(isset($form['parameter']['user']))
+	   {
+		 
+         $query = new EntityFieldQuery();
+	     $query -> entityCondition('entity_type', 'user');
+         $result = $query -> execute();
+         
+         $resid = array_keys($result['user']);
+         $res = entity_load('user', $resid);
+
+        
+
+         foreach($res as $uid => $value)
+         {
+            $name = $value -> name;
+			if($uid != 0)
+            $options[(int)$uid] = $name;
+         }
+		 
+         $form['parameter']['user']['settings']['user'] = array(
+
+                 '#type' => 'select',
+       '#title' => t('Selected'),
+       '#options' => $options,
+       '#default_value' => 1,
+       '#description' => t('Set this to <em>Yes</em> if you would like this category to be selected by default.'),
+         	);
+     }
+	   
+}
+	 
+}
+
+function custom_library_issue_check($book)
+{
+	$bid=$book->nid;  
+	$uid=$GLOBALS['user'] -> uid;
+	$query = new EntityFieldQuery();
+	$query -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'issue')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_user','target_id',$uid,'=')
+		   -> fieldCondition('field_book','target_id',$bid,'=');
+    $result = $query -> execute();
+	
+	$query1 = new EntityFieldQuery();
+	$query1 -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'transaction')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_book','target_id',$bid,'=');
+    $result1 = $query1 -> execute();
+	
+	$query2 = new EntityFieldQuery();
+	$query2 -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'issue')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_user','target_id',$uid,'=')
+		   -> fieldCondition('field_status','value','Issued','=');
+    $result2 = $query2 -> execute();
+	
+	$sum=0;
+	if(isset($result1['node']))
+	{
+		$resid=array_keys($result1['node']);
+		$res=entity_load('node',$resid);
+		foreach ($res as $key => $value)
+		{	
+			$sum+=$value -> field_no_of_copies['und'][0]['value'];
+	    }
+	}
+	
+	$count=0;
+	if(isset($result2['node']))
+	{
+		$resid1=array_keys($result2['node']);
+		$res1=entity_load('node',$resid1);
+		foreach($res1 as $key1 => $value1)
+		{
+			$count++;
+		}
+	}
+	
+	if($sum<=0)
+	      return array('check' => '2');
+	else if(isset($result['node']))
+	   {
+	      $keys=array_keys($result['node']);
+		  $load = entity_load('node',$keys);
+		  foreach($load as $k => $v)
+		  {
+		       $status = $v -> field_status['und'][0]['value'];
+		  }
+		 if($status=='Issued')
+		   return array('check' => '0');
+		 else
+		  return array('check' => '1');
+	    }
+	else if($count==4)
+	      return array('check' => '3');
+    else
+	      return array('check' => '1');
+}
+
+function custom_library_issue_check_librarian($book,$user)
+{
+	$bid=$book -> nid;  
+	$uid=$user -> uid;
+	$query = new EntityFieldQuery();
+	$query -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'issue')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_user','target_id',$uid,'=')
+		   -> fieldCondition('field_book','target_id',$bid,'=');
+    $result = $query -> execute();
+	
+	$query1 = new EntityFieldQuery();
+	$query1 -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'transaction')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_book','target_id',$bid,'=');
+    $result1 = $query1 -> execute();
+	
+	$query2 = new EntityFieldQuery();
+	$query2 -> entityCondition('entity_type', 'node')
+	       -> entityCondition('bundle', 'issue')
+		   -> propertyCondition('status', NODE_PUBLISHED)
+		   -> fieldCondition('field_user','target_id',$uid,'=')
+		   -> fieldCondition('field_status','value','Issued','=');
+    $result2 = $query2 -> execute();
+	
+	$sum=0;
+	if(isset($result1['node']))
+	{
+		$resid=array_keys($result1['node']);
+		$res=entity_load('node',$resid);
+		foreach ($res as $key => $value)
+		{	
+			$sum+=$value -> field_no_of_copies['und'][0]['value'];
+	    }
+	}
+	
+	$count=0;
+	if(isset($result2['node']))
+	{
+		$resid1=array_keys($result2['node']);
+		$res1=entity_load('node',$resid1);
+		foreach($res1 as $key1 => $value1)
+		{
+			$count++;
+		}
+	}
+	
+	if($sum<=0)
+	      return array('check' => '2');
+	else if(isset($result['node']))
+	   {
+	      $keys=array_keys($result['node']);
+		  $load = entity_load('node',$keys);
+		  foreach($load as $k => $v)
+		  {
+		       $status = $v -> field_status['und'][0]['value'];
+		  }
+		 if($status=='Issued')
+		   return array('check' => '0');
+		 else
+		  return array('check' => '1');
+	    }
+	else if($count==4)
+	      return array('check' => '3');
+    else
+	      return array('check' => '1');
+}
+
+function custom_library_get_id($issue)
+{
+	$bid = $issue -> field_book['und'][0]['target_id'];	
+		return array('id' => $bid);
+}
+
+function custom_library_fine_calculation($issue)
+{
+	
+	$returndate = $issue -> field_return_date['und'][0]['value'];
+	$issuedate = $issue -> field_issue_date['und'][0]['value'];
+    $diff = strtotime($returndate) - strtotime($issuedate);
+	$days = intval($diff/86400);
+	$fine=0;
+	$amt = variable_get('fine_amount');
+	$dys = variable_get('fine_days');
+	if($days>$dys)
+	   $fine = $amt * ($days-$dys);
+	return array('fine' => $fine);
+}
+
+function custom_library_return_date()
+{
+	$offset = variable_get('fine_days');
+    $offset = $offset * 86400;
+	$current = $GLOBALS['timers']['page']['start'];
+	$current = intval($current) + $offset;
+	return array('date' => $current);
+}
+
+?>
